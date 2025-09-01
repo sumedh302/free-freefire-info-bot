@@ -82,6 +82,8 @@ class InfoCommands(commands.Cog):
                 except Exception as e:
                     return await ctx.send(f"⚠️ JSON parse error: {e}")
 
+        # Additional info rendering can be added here if desired
+
     def load_config(self):
         default_config = {
             "servers": {},
@@ -113,8 +115,6 @@ class InfoCommands(commands.Cog):
                 json.dump(self.config_data, f, indent=4, ensure_ascii=False)
         except IOError as e:
             print(f"Error saving config: {e}")
-
-
 
     async def is_channel_allowed(self, ctx):
         try:
@@ -183,9 +183,10 @@ class InfoCommands(commands.Cog):
 
         await ctx.send(embed=embed)
 
+    # ---- Second info command with full embed rendering ----
     @commands.hybrid_command(name="info", description="Displays information about a Free Fire player")
     @app_commands.describe(uid="FREE FIRE INFO")
-    async def player_info(self, ctx: commands.Context, uid: str):
+    async def player_info_full(self, ctx: commands.Context, uid: str):
         guild_id = str(ctx.guild.id)
 
         if not uid.isdigit() or len(uid) < 6:
@@ -193,8 +194,6 @@ class InfoCommands(commands.Cog):
 
         if not await self.is_channel_allowed(ctx):
             return await ctx.send(" This command is not allowed in this channel.", ephemeral=True)
-
-
 
         cooldown = self.config_data["global_settings"]["default_cooldown"]
         if guild_id in self.config_data["servers"]:
@@ -207,12 +206,12 @@ class InfoCommands(commands.Cog):
                 return await ctx.send(f" Please wait {remaining}s before using this command again", ephemeral=True)
 
         self.cooldowns[ctx.author.id] = datetime.now()
-       
-try:
+
+        try:
             async with ctx.typing():
-                url = self.raw_api_url.format(uid=uid)  # ✅ fixed
+                url = self.raw_api_url.format(uid=uid)
                 async with self.session.get(url) as response:
-                    text = await response.text()  # for debugging
+                    text = await response.text()
                     if response.status == 404:
                         return await ctx.send(f" Player with UID `{uid}` not found.")
                     if response.status != 200:
@@ -222,113 +221,104 @@ try:
                     except Exception as e:
                         return await ctx.send(f"⚠️ JSON parse error: {e}\n```{text[:200]}```")
 
+                basic_info = data.get('basicInfo', {})
+                captain_info = data.get('captainBasicInfo', {})
+                clan_info = data.get('clanBasicInfo', {})
+                credit_score_info = data.get('creditScoreInfo', {})
+                pet_info = data.get('petInfo', {})
+                profile_info = data.get('profileInfo', {})
+                social_info = data.get('socialInfo', {})
 
-            
-            basic_info = data.get('basicInfo', {})
-            captain_info = data.get('captainBasicInfo', {})
-            clan_info = data.get('clanBasicInfo', {})
-            credit_score_info = data.get('creditScoreInfo', {})
-            pet_info = data.get('petInfo', {})
-            profile_info = data.get('profileInfo', {})
-            social_info = data.get('socialInfo', {})
+                region = basic_info.get('region', 'Not found')
 
+                embed = discord.Embed(
+                    title=" Player Information",
+                    color=discord.Color.blurple(),
+                    timestamp=datetime.now()
+                )
+                embed.set_thumbnail(url=ctx.author.display_avatar.url)
 
-            region = basic_info.get('region', 'Not found')
+                embed.add_field(name="", value="\n".join([
+                    "**┌  ACCOUNT BASIC INFO**",
+                    f"**├─ Name**: {basic_info.get('nickname', 'Not found')}",
+                    f"**├─ UID**: `{uid}`",
+                    f"**├─ Level**: {basic_info.get('level', 'Not found')} (Exp: {basic_info.get('exp', '?')})",
+                    f"**├─ Region**: {region}",
+                    f"**├─ Likes**: {basic_info.get('liked', 'Not found')}",
+                    f"**├─ Honor Score**: {credit_score_info.get('creditScore', 'Not found')}",
+                    f"**└─ Signature**: {social_info.get('signature', 'None') or 'None'}"
+                ]), inline=False)
 
-            embed = discord.Embed(
-                title=" Player Information",
-                color=discord.Color.blurple(),
-                timestamp=datetime.now()
-            )
-            embed.set_thumbnail(url=ctx.author.display_avatar.url)
+                embed.add_field(name="", value="\n".join([
+                    "**┌  ACCOUNT ACTIVITY**",
+                    f"**├─ Most Recent OB**: {basic_info.get('releaseVersion', '?')}",
+                    f"**├─ Current BP Badges**: {basic_info.get('badgeCnt', 'Not found')}",
+                    f"**├─ BR Rank**: {'' if basic_info.get('showBrRank') else 'Not found'} {basic_info.get('rankingPoints', '?')}",
+                    f"**├─ CS Rank**: {'' if basic_info.get('showCsRank') else 'Not found'} {basic_info.get('csRankingPoints', '?')} ",
+                    f"**├─ Created At**: {self.safe_timestamp(basic_info.get('createAt', 'Not found'))}",
+                    f"**└─ Last Login**: {self.safe_timestamp(basic_info.get('lastLoginAt', 'Not found'))}"
+                ]), inline=False)
 
-            embed.add_field(name="", value="\n".join([
-                "**┌  ACCOUNT BASIC INFO**",
-                f"**├─ Name**: {basic_info.get('nickname', 'Not found')}",
-                f"**├─ UID**: `{uid}`",
-                f"**├─ Level**: {basic_info.get('level', 'Not found')} (Exp: {basic_info.get('exp', '?')})",
-                f"**├─ Region**: {region}",
-                f"**├─ Likes**: {basic_info.get('liked', 'Not found')}",
-                f"**├─ Honor Score**: {credit_score_info.get('creditScore', 'Not found')}",
-                f"**└─ Signature**: {social_info.get('signature', 'None') or 'None'}"
-            ]), inline=False)
-          
+                embed.add_field(name="", value="\n".join([
+                    "**┌  ACCOUNT OVERVIEW**",
+                    f"**├─ Avatar ID**: {profile_info.get('avatarId', 'Not found')}",
+                    f"**├─ Banner ID**: {basic_info.get('bannerId', 'Not found')}",
+                    f"**├─ Pin ID**: {captain_info.get('pinId', 'Not found') if captain_info else 'Default'}",
+                    f"**└─ Equipped Skills**: {profile_info.get('equipedSkills', 'Not found')}"
+                ]), inline=False)
 
-            embed.add_field(name="", value="\n".join([
-                "**┌  ACCOUNT ACTIVITY**",
-                f"**├─ Most Recent OB**: {basic_info.get('releaseVersion', '?')}",
-                f"**├─ Current BP Badges**: {basic_info.get('badgeCnt', 'Not found')}",
-                f"**├─ BR Rank**: {'' if basic_info.get('showBrRank') else 'Not found'} {basic_info.get('rankingPoints', '?')}",
-                f"**├─ CS Rank**: {'' if basic_info.get('showCsRank') else 'Not found'} {basic_info.get('csRankingPoints', '?')} ",
-                f"**├─ Created At**: {self.convert_unix_timestamp(int(basic_info.get('createAt', 'Not found')))}",
-                f"**└─ Last Login**: {self.convert_unix_timestamp(int(basic_info.get('lastLoginAt', 'Not found')))}"
+                embed.add_field(name="", value="\n".join([
+                    "**┌  PET DETAILS**",
+                    f"**├─ Equipped?**: {'Yes' if pet_info.get('isSelected') else 'Not Found'}",
+                    f"**├─ Pet Name**: {pet_info.get('name', 'Not Found')}",
+                    f"**├─ Pet Exp**: {pet_info.get('exp', 'Not Found')}",
+                    f"**└─ Pet Level**: {pet_info.get('level', 'Not Found')}"
+                ]), inline=False)
 
-            ]), inline=False)
+                if clan_info:
+                    guild_info = [
+                        "**┌  GUILD INFO**",
+                        f"**├─ Guild Name**: {clan_info.get('clanName', 'Not found')}",
+                        f"**├─ Guild ID**: `{clan_info.get('clanId', 'Not found')}`",
+                        f"**├─ Guild Level**: {clan_info.get('clanLevel', 'Not found')}",
+                        f"**├─ Live Members**: {clan_info.get('memberNum', 'Not found')}/{clan_info.get('capacity', '?')}"
+                    ]
+                    if captain_info:
+                        guild_info.extend([
+                            "**└─ Leader Info**:",
+                            f"    **├─ Leader Name**: {captain_info.get('nickname', 'Not found')}",
+                            f"    **├─ Leader UID**: `{captain_info.get('accountId', 'Not found')}`",
+                            f"    **├─ Leader Level**: {captain_info.get('level', 'Not found')} (Exp: {captain_info.get('exp', '?')})",
+                            f"    **├─ Last Login**: {self.safe_timestamp(captain_info.get('lastLoginAt', 'Not found'))}",
+                            f"    **├─ Title**: {captain_info.get('title', 'Not found')}",
+                            f"    **├─ BP Badges**: {captain_info.get('badgeCnt', '?')}",
+                            f"    **├─ BR Rank**: {'' if captain_info.get('showBrRank') else 'Not found'} {captain_info.get('rankingPoints', 'Not found')}",
+                            f"    **└─ CS Rank**: {'' if captain_info.get('showCsRank') else 'Not found'} {captain_info.get('csRankingPoints', 'Not found')} "
+                        ])
+                    embed.add_field(name="", value="\n".join(guild_info), inline=False)
 
-            embed.add_field(name="", value="\n".join([
-                "**┌  ACCOUNT OVERVIEW**",
-                f"**├─ Avatar ID**: {profile_info.get('avatarId', 'Not found')}",
-                f"**├─ Banner ID**: {basic_info.get('bannerId', 'Not found')}",
-                f"**├─ Pin ID**: {captain_info.get('pinId', 'Not found') if captain_info else 'Default'}",
-                f"**└─ Equipped Skills**: {profile_info.get('equipedSkills', 'Not found')}"
-            ]), inline=False)
+                embed.set_footer(text="DEVELOPED BY SUMEDH")
+                await ctx.send(embed=embed)
 
-            embed.add_field(name="", value="\n".join([
-                "**┌  PET DETAILS**",
-                f"**├─ Equipped?**: {'Yes' if pet_info.get('isSelected') else 'Not Found'}",
-                f"**├─ Pet Name**: {pet_info.get('name', 'Not Found')}",
-                f"**├─ Pet Exp**: {pet_info.get('exp', 'Not Found')}",
-                f"**└─ Pet Level**: {pet_info.get('level', 'Not Found')}"
-            ]), inline=False)
-
-            if clan_info:
-                guild_info = [
-                    "**┌  GUILD INFO**",
-                    f"**├─ Guild Name**: {clan_info.get('clanName', 'Not found')}",
-                    f"**├─ Guild ID**: `{clan_info.get('clanId', 'Not found')}`",
-                    f"**├─ Guild Level**: {clan_info.get('clanLevel', 'Not found')}",
-                    f"**├─ Live Members**: {clan_info.get('memberNum', 'Not found')}/{clan_info.get('capacity', '?')}"
-                ]
-                if captain_info:
-                    guild_info.extend([
-                        "**└─ Leader Info**:",
-                        f"    **├─ Leader Name**: {captain_info.get('nickname', 'Not found')}",
-                        f"    **├─ Leader UID**: `{captain_info.get('accountId', 'Not found')}`",
-                        f"    **├─ Leader Level**: {captain_info.get('level', 'Not found')} (Exp: {captain_info.get('exp', '?')})",
-                        f"    **├─ Last Login**: {self.convert_unix_timestamp(int(captain_info.get('lastLoginAt', 'Not found')))}",
-                        f"    **├─ Title**: {captain_info.get('title', 'Not found')}",
-                        f"    **├─ BP Badges**: {captain_info.get('badgeCnt', '?')}",
-                        f"    **├─ BR Rank**: {'' if captain_info.get('showBrRank') else 'Not found'} {captain_info.get('rankingPoints', 'Not found')}",
-                        f"    **└─ CS Rank**: {'' if captain_info.get('showCsRank') else 'Not found'} {captain_info.get('csRankingPoints', 'Not found')} "
-                    ])
-                embed.add_field(name="", value="\n".join(guild_info), inline=False)
-
-
-
-            embed.set_footer(text="DEVELOPED BY SUMEDH")
-            await ctx.send(embed=embed)
-
-            if region and uid:
-                try:
-                    image_url = f"{self.generate_url}?uid={uid}"
-                    print(f"Url d'image = {image_url}")
-                    if image_url:
-                        async with self.session.get(image_url) as img_file:
-                            if img_file.status == 200:
-                                with io.BytesIO(await img_file.read()) as buf:
-                                    file = discord.File(buf, filename=f"outfit_{uuid.uuid4().hex[:8]}.png")
-                                    await ctx.send(file=file)  # ✅ ENVOYER L'IMAGE
-                                    print("Image envoyée avec succès")
-                            else:
-                                print(f"Erreur HTTP: {img_file.status}")
-                except Exception as e:
-                    print("Image generation failed:", e)
-
+                if region and uid:
+                    try:
+                        image_url = f"{self.generate_url}?uid={uid}"
+                        print(f"Url d'image = {image_url}")
+                        if image_url:
+                            async with self.session.get(image_url) as img_file:
+                                if img_file.status == 200:
+                                    with io.BytesIO(await img_file.read()) as buf:
+                                        file = discord.File(buf, filename=f"outfit_{uuid.uuid4().hex[:8]}.png")
+                                        await ctx.send(file=file)
+                                        print("Image envoyée avec succès")
+                                else:
+                                    print(f"Erreur HTTP: {img_file.status}")
+                    except Exception as e:
+                        print("Image generation failed:", e)
         except Exception as e:
             await ctx.send(f" Unexpected error: `{e}`")
         finally:
             gc.collect()
-
 
     async def cog_unload(self):
         await self.session.close()
@@ -355,7 +345,6 @@ try:
             description="The Free Fire API is not responding. Try again later.",
             color=0xF39C12
         ))
-
 
 
 async def setup(bot):
