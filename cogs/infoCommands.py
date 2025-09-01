@@ -18,6 +18,7 @@ class InfoCommands(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.api_url = "https://glob-info2.vercel.app/info"
+        self.raw_api_url = "http://raw.thug4ff.com/info?uid={uid}"
         self.generate_url = "https://genprofile2.vercel.app/generate"
         self.session = aiohttp.ClientSession()
         self.config_data = self.load_config()
@@ -257,7 +258,7 @@ class InfoCommands(commands.Cog):
 
 
 
-            embed.set_footer(text="DEVELOPED BY THUG")
+            embed.set_footer(text="DEVELOPED BY SUMEDH")
             await ctx.send(embed=embed)
 
             if region and uid:
