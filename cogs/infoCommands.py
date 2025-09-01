@@ -208,8 +208,7 @@ class InfoCommands(commands.Cog):
 
         self.cooldowns[ctx.author.id] = datetime.now()
        
-
-               try:
+try:
             async with ctx.typing():
                 url = self.raw_api_url.format(uid=uid)  # ✅ fixed
                 async with self.session.get(url) as response:
