@@ -9,10 +9,8 @@ import asyncio
 import io
 import uuid
 import gc
-from datetime import datetime
 
 CONFIG_FILE = "info_channels.json"
-
 
 class InfoCommands(commands.Cog):
     def __init__(self, bot):
@@ -29,12 +27,12 @@ class InfoCommands(commands.Cog):
         with open("config.json", "r") as f:
             return json.load(f)
 
-    async def is_channel_allowed(self, ctx):
-        guild_id = str(ctx.guild.id)
-        if guild_id not in self.config_data["servers"]:
-            return True
-        allowed_channels = self.config_data["servers"][guild_id]["channels"]
-        return str(ctx.channel.id) in allowed_channels
+    def save_config(self):
+        try:
+            with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+                json.dump(self.config_data, f, indent=4, ensure_ascii=False)
+        except IOError as e:
+            print(f"Error saving config: {e}")
 
     def safe_timestamp(self, value):
         """Safely convert timestamp to readable format or return 'Not found'"""
@@ -43,89 +41,12 @@ class InfoCommands(commands.Cog):
         except Exception:
             return "Not found"
 
-    @commands.hybrid_command(name="info", description="Displays information about a Free Fire player")
-    @app_commands.describe(uid="Free Fire UID")
-    async def player_info(self, ctx: commands.Context, uid: str):
-        guild_id = str(ctx.guild.id)
-
-        if not uid.isdigit() or len(uid) < 6:
-            return await ctx.reply(
-                "❌ Invalid UID! Must be **only numbers** and at least **6 digits**.",
-                mention_author=False
-            )
-
-        if not await self.is_channel_allowed(ctx):
-            return await ctx.send("⚠️ This command is not allowed in this channel.", ephemeral=True)
-
-        cooldown = self.config_data["global_settings"]["default_cooldown"]
-        if guild_id in self.config_data["servers"]:
-            cooldown = self.config_data["servers"][guild_id]["config"].get("cooldown", cooldown)
-
-        if ctx.author.id in self.cooldowns:
-            last_used = self.cooldowns[ctx.author.id]
-            if (datetime.now() - last_used).seconds < cooldown:
-                remaining = cooldown - (datetime.now() - last_used).seconds
-                return await ctx.send(f"⏳ Please wait {remaining}s before using this command again", ephemeral=True)
-
-        self.cooldowns[ctx.author.id] = datetime.now()
-
-        async with ctx.typing():
-            # 1) Fetch JSON player info
-            url = self.raw_api_url.format(uid=uid)
-            async with self.session.get(url) as response:
-                if response.status == 404:
-                    return await ctx.send(f"❌ Player with UID `{uid}` not found.")
-                if response.status != 200:
-                    return await ctx.send(f"⚠️ API error {response.status}")
-                try:
-                    data = await response.json()
-                except Exception as e:
-                    return await ctx.send(f"⚠️ JSON parse error: {e}")
-
-        # Additional info rendering can be added here if desired
-
-    def load_config(self):
-        default_config = {
-            "servers": {},
-            "global_settings": {
-                "default_all_channels": False,
-                "default_cooldown": 30,
-                "default_daily_limit": 30
-            }
-        }
-
-        if os.path.exists(CONFIG_FILE):
-            try:
-                with open(CONFIG_FILE, 'r') as f:
-                    loaded_config = json.load(f)
-                    loaded_config.setdefault("global_settings", {})
-                    loaded_config["global_settings"].setdefault("default_all_channels", False)
-                    loaded_config["global_settings"].setdefault("default_cooldown", 30)
-                    loaded_config["global_settings"].setdefault("default_daily_limit", 30)
-                    loaded_config.setdefault("servers", {})
-                    return loaded_config
-            except (json.JSONDecodeError, IOError) as e:
-                print(f"Error loading config: {e}")
-                return default_config
-        return default_config
-
-    def save_config(self):
-        try:
-            with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
-                json.dump(self.config_data, f, indent=4, ensure_ascii=False)
-        except IOError as e:
-            print(f"Error saving config: {e}")
-
     async def is_channel_allowed(self, ctx):
         try:
             guild_id = str(ctx.guild.id)
             allowed_channels = self.config_data["servers"].get(guild_id, {}).get("info_channels", [])
-
-            # Autoriser tous les salons si aucun salon n'a été configuré pour ce serveur
             if not allowed_channels:
                 return True
-
-            # Sinon, vérifier si le salon actuel est dans la liste autorisée
             return str(ctx.channel.id) in allowed_channels
         except Exception as e:
             print(f"Error checking channel permission: {e}")
@@ -160,13 +81,11 @@ class InfoCommands(commands.Cog):
     @commands.hybrid_command(name="infochannels", description="List allowed channels")
     async def list_info_channels(self, ctx: commands.Context):
         guild_id = str(ctx.guild.id)
-
         if guild_id in self.config_data["servers"] and self.config_data["servers"][guild_id]["info_channels"]:
             channels = []
             for channel_id in self.config_data["servers"][guild_id]["info_channels"]:
                 channel = ctx.guild.get_channel(int(channel_id))
                 channels.append(f"• {channel.mention if channel else f'ID: {channel_id}'}")
-
             embed = discord.Embed(
                 title="Allowed channels for !info",
                 description="\n".join(channels),
@@ -180,20 +99,21 @@ class InfoCommands(commands.Cog):
                 description="All channels are allowed (no restriction configured)",
                 color=discord.Color.blue()
             )
-
         await ctx.send(embed=embed)
 
-    # ---- Second info command with full embed rendering ----
     @commands.hybrid_command(name="info", description="Displays information about a Free Fire player")
-    @app_commands.describe(uid="FREE FIRE INFO")
-    async def player_info_full(self, ctx: commands.Context, uid: str):
+    @app_commands.describe(uid="Free Fire UID")
+    async def player_info(self, ctx: commands.Context, uid: str):
         guild_id = str(ctx.guild.id)
 
         if not uid.isdigit() or len(uid) < 6:
-            return await ctx.reply(" Invalid UID! It must:\n- Be only numbers\n- Have at least 6 digits", mention_author=False)
+            return await ctx.reply(
+                "❌ Invalid UID! Must be **only numbers** and at least **6 digits**.",
+                mention_author=False
+            )
 
         if not await self.is_channel_allowed(ctx):
-            return await ctx.send(" This command is not allowed in this channel.", ephemeral=True)
+            return await ctx.send("⚠️ This command is not allowed in this channel.", ephemeral=True)
 
         cooldown = self.config_data["global_settings"]["default_cooldown"]
         if guild_id in self.config_data["servers"]:
@@ -203,7 +123,7 @@ class InfoCommands(commands.Cog):
             last_used = self.cooldowns[ctx.author.id]
             if (datetime.now() - last_used).seconds < cooldown:
                 remaining = cooldown - (datetime.now() - last_used).seconds
-                return await ctx.send(f" Please wait {remaining}s before using this command again", ephemeral=True)
+                return await ctx.send(f"⏳ Please wait {remaining}s before using this command again", ephemeral=True)
 
         self.cooldowns[ctx.author.id] = datetime.now()
 
@@ -213,7 +133,7 @@ class InfoCommands(commands.Cog):
                 async with self.session.get(url) as response:
                     text = await response.text()
                     if response.status == 404:
-                        return await ctx.send(f" Player with UID `{uid}` not found.")
+                        return await ctx.send(f"❌ Player with UID `{uid}` not found.")
                     if response.status != 200:
                         return await ctx.send(f"⚠️ API error {response.status}\n```{text[:200]}```")
                     try:
@@ -345,7 +265,6 @@ class InfoCommands(commands.Cog):
             description="The Free Fire API is not responding. Try again later.",
             color=0xF39C12
         ))
-
 
 async def setup(bot):
     await bot.add_cog(InfoCommands(bot))
