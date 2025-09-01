@@ -16,7 +16,7 @@ class InfoCommands(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.raw_api_url = "http://raw.thug4ff.com/info?uid={uid}"   # player data
-        self.generate_url = "https://genprofile2.vercel.app/generate?uid={uid}"  # profile image
+        self.generate_url = "https://genprofile-24nr.onrender.com/api/profile_card?uid={uid}"  # profile image
         self.session = aiohttp.ClientSession()
         self.cooldowns = {}
         self.config_data = self.load_config()
