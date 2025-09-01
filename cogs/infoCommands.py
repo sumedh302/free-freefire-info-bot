@@ -17,26 +17,70 @@ CONFIG_FILE = "info_channels.json"
 class InfoCommands(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.raw_api_url = "http://raw.thug4ff.com/info?uid={uid}"
+        self.raw_api_url = "http://raw.thug4ff.com/info?uid={uid}"   # player data
+        self.generate_url = "https://genprofile2.vercel.app/generate?uid={uid}"  # profile image
         self.session = aiohttp.ClientSession()
-        self.config_data = self.load_config()
         self.cooldowns = {}
+        self.config_data = self.load_config()
 
-   
+    def load_config(self):
+        if not os.path.exists("config.json"):
+            return {"servers": {}, "global_settings": {"default_cooldown": 10}}
+        with open("config.json", "r") as f:
+            return json.load(f)
 
-    
+    async def is_channel_allowed(self, ctx):
+        guild_id = str(ctx.guild.id)
+        if guild_id not in self.config_data["servers"]:
+            return True
+        allowed_channels = self.config_data["servers"][guild_id]["channels"]
+        return str(ctx.channel.id) in allowed_channels
 
-    def convert_unix_timestamp(self ,timestamp: int) -> str:
-        return datetime.utcfromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
-
-
-
-    def check_request_limit(self, guild_id):
+    def safe_timestamp(self, value):
+        """Safely convert timestamp to readable format or return 'Not found'"""
         try:
-            return self.is_server_subscribed(guild_id) or not self.is_limit_reached(guild_id)
-        except Exception as e:
-            print(f"Error checking request limit: {e}")
-            return False
+            return datetime.fromtimestamp(int(value)).strftime('%Y-%m-%d %H:%M:%S')
+        except Exception:
+            return "Not found"
+
+    @commands.hybrid_command(name="info", description="Displays information about a Free Fire player")
+    @app_commands.describe(uid="Free Fire UID")
+    async def player_info(self, ctx: commands.Context, uid: str):
+        guild_id = str(ctx.guild.id)
+
+        if not uid.isdigit() or len(uid) < 6:
+            return await ctx.reply(
+                "❌ Invalid UID! Must be **only numbers** and at least **6 digits**.",
+                mention_author=False
+            )
+
+        if not await self.is_channel_allowed(ctx):
+            return await ctx.send("⚠️ This command is not allowed in this channel.", ephemeral=True)
+
+        cooldown = self.config_data["global_settings"]["default_cooldown"]
+        if guild_id in self.config_data["servers"]:
+            cooldown = self.config_data["servers"][guild_id]["config"].get("cooldown", cooldown)
+
+        if ctx.author.id in self.cooldowns:
+            last_used = self.cooldowns[ctx.author.id]
+            if (datetime.now() - last_used).seconds < cooldown:
+                remaining = cooldown - (datetime.now() - last_used).seconds
+                return await ctx.send(f"⏳ Please wait {remaining}s before using this command again", ephemeral=True)
+
+        self.cooldowns[ctx.author.id] = datetime.now()
+
+        async with ctx.typing():
+            # 1) Fetch JSON player info
+            url = self.raw_api_url.format(uid=uid)
+            async with self.session.get(url) as response:
+                if response.status == 404:
+                    return await ctx.send(f"❌ Player with UID `{uid}` not found.")
+                if response.status != 200:
+                    return await ctx.send(f"⚠️ API error {response.status}")
+                try:
+                    data = await response.json()
+                except Exception as e:
+                    return await ctx.send(f"⚠️ JSON parse error: {e}")
 
     def load_config(self):
         default_config = {
