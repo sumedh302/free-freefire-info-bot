@@ -79,7 +79,7 @@ class Bot(commands.Bot):
         try:
             activity = discord.Activity(
                 type=discord.ActivityType.watching,
-                name=f"{len(self.guilds)} servers"
+                name=f"fucking {len(self.guilds)} servers"
             )
             await self.change_presence(activity=activity)
         except Exception as e:
