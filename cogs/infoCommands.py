@@ -17,9 +17,7 @@ CONFIG_FILE = "info_channels.json"
 class InfoCommands(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.api_url = "https://glob-info2.vercel.app/info"
         self.raw_api_url = "http://raw.thug4ff.com/info?uid={uid}"
-        self.generate_url = "https://genprofile2.vercel.app/generate"
         self.session = aiohttp.ClientSession()
         self.config_data = self.load_config()
         self.cooldowns = {}
@@ -167,14 +165,20 @@ class InfoCommands(commands.Cog):
         self.cooldowns[ctx.author.id] = datetime.now()
        
 
-        try:
+               try:
             async with ctx.typing():
-                async with self.session.get(f"{self.api_url}?uid={uid}") as response:
+                url = self.raw_api_url.format(uid=uid)  # ✅ fixed
+                async with self.session.get(url) as response:
+                    text = await response.text()  # for debugging
                     if response.status == 404:
                         return await ctx.send(f" Player with UID `{uid}` not found.")
                     if response.status != 200:
-                        return await ctx.send("API error. Try again later.")
-                    data = await response.json()
+                        return await ctx.send(f"⚠️ API error {response.status}\n```{text[:200]}```")
+                    try:
+                        data = await response.json()
+                    except Exception as e:
+                        return await ctx.send(f"⚠️ JSON parse error: {e}\n```{text[:200]}```")
+
 
             
             basic_info = data.get('basicInfo', {})
