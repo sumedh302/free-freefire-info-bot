@@ -44,7 +44,7 @@ class InfoCommands(commands.Cog):
     async def is_channel_allowed(self, ctx):
         try:
             guild_id = str(ctx.guild.id)
-            allowed_channels = self.config_data["servers"].get(guild_id, {}).get("info_channels", [])
+            allowed_channels = self.config_data["servers"].get(1385109245443182662, {}).get("info_channels", [])
             if not allowed_channels:
                 return True
             return str(ctx.channel.id) in allowed_channels
